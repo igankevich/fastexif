@@ -39,9 +39,9 @@ pub enum CameraType {
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-    pub struct RunTimeFlags: u64 {
+    pub struct RunTimeFlags: u32 {
         const VALID = 0b1;
-        const ROUNDED = 0b10;
+        const HAS_BEEN_ROUNDED = 0b10;
         const POSITIVE_INFINITY = 0b100;
         const NEGATIVE_INFINITY = 0b1000;
         const INDEFINITE = 0b10000;
@@ -52,9 +52,9 @@ bitflags! {
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct RunTime {
     pub flags: RunTimeFlags,
-    pub value: u64,
-    pub timescale: u64,
-    pub epoch: u64,
+    pub value: i64,
+    pub timescale: i32,
+    pub epoch: i64,
 }
 
 /// Iterator over raw entries.
@@ -175,25 +175,25 @@ impl<'a> crate::RawEntry<'a> {
                     let ResolvedValueRef::Int(epoch) = value else {
                         return Err(InvalidExif);
                     };
-                    run_time.epoch = *epoch as u64;
+                    run_time.epoch = *epoch;
                 }
                 ResolvedValueRef::Str("flags") => {
                     let ResolvedValueRef::Int(flags) = value else {
                         return Err(InvalidExif);
                     };
-                    run_time.flags = RunTimeFlags::from_bits_retain(*flags as u64);
+                    run_time.flags = RunTimeFlags::from_bits_retain(*flags as u32);
                 }
                 ResolvedValueRef::Str("timescale") => {
                     let ResolvedValueRef::Int(timescale) = value else {
                         return Err(InvalidExif);
                     };
-                    run_time.timescale = *timescale as u64;
+                    run_time.timescale = *timescale as i32;
                 }
                 ResolvedValueRef::Str("value") => {
                     let ResolvedValueRef::Int(value) = value else {
                         return Err(InvalidExif);
                     };
-                    run_time.value = *value as u64;
+                    run_time.value = *value;
                 }
                 _ => {}
             }
