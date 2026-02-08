@@ -1,13 +1,15 @@
+#![allow(clippy::unusual_byte_groupings)]
+
 use crate::InvalidExif;
 use crate::ParseOptions;
 use crate::SignedRational;
 use crate::UnsignedRational;
-use crate::ValueRef;
+use crate::Value;
 use crate::apple;
+use crate::define_tag_enum;
+use crate::define_value_enums;
 use crate::interop;
-use crate::make_tag_enum_v2;
 use crate::to_date_time;
-use crate::parse_enum;
 
 use bitflags::bitflags;
 use chrono::DateTime;
@@ -15,8 +17,8 @@ use chrono::NaiveDateTime;
 use chrono::TimeDelta;
 use chrono::Utc;
 
-make_tag_enum_v2! {
-    Tag "Exif tags"
+define_tag_enum! {
+    Tag "Exif tag"
     Entry "Exif entry"
     EntryMap "Exif entries"
     (Iter)
@@ -24,10 +26,10 @@ make_tag_enum_v2! {
     ("F number (focal ratio)" FNumber 33437 (UnsignedRational) parse_unsigned_rational)
     ("Exposure program" ExposureProgram 34850 (ExposureProgram) parse_exposure_program)
     ("Spectral sensitivity" SpectralSensitivity 34852 (&'a str) parse_str)
-    ("Photographic Sensitivity" PhotographicSensitivity 34855 (u16) parse_u16)
+    ("Photographic sensitivity" PhotographicSensitivity 34855 (u16) parse_u16)
     ("Optoelectric coefficient" Oecf 34856 (&'a [u8]) parse_bytes)
-    ("Sensitivity Type" SensitivityType 34864 (SensitivityType) parse_sensitivity_type)
-    ("Standard Output Sensitivity" StandardOutputSensitivity 34865 (u32) parse_u32)
+    ("Sensitivity type" SensitivityType 34864 (SensitivityType) parse_sensitivity_type)
+    ("Standard Output sensitivity" StandardOutputSensitivity 34865 (u32) parse_u32)
     ("Recommended Exposure Index" RecommendedExposureIndex 34866 (u32) parse_u32)
     ("ISOSpeed" IsoSpeed 34867 (u32) parse_u32)
     ("ISOSpeed Latitude yyy" IsoSpeedLatitudeYyy 34868 (u32) parse_u32)
@@ -111,188 +113,129 @@ make_tag_enum_v2! {
     ("Gamma" Gamma 42240 (UnsignedRational) parse_unsigned_rational)
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct FixedOffset(pub chrono::FixedOffset);
-
-#[cfg(feature = "serde")]
-impl serde::Serialize for FixedOffset {
-    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use alloc::string::ToString;
-        let string = self.0.to_string();
-        s.serialize_str(&string)
-    }
+define_value_enums! {
+    (ColorSpace u16 "Color space."
+        (Srgb 1 "sRGB color space.")
+        (Uncalibrated 0xffff "Other color space."))
+    (ExposureProgram u16 "Exposure program class."
+        (Undefined 0 "Not defined")
+        (Manual 1 "Manual exposure")
+        (Normal 2 "Normal program")
+        (AperturePriority 3 "Aperture priority")
+        (ShutterPriority 4 "Shutter priority")
+        (Creative 5 "Creative program (biased toward depth of field)")
+        (Action 6 "Action program (biased toward fast shutter speed)")
+        (Portrait 7 "Portrait mode (for closeup photos with the background out of focus)")
+        (Landscape 8 "Landscape mode (for landscape photos with the background in focus)"))
+    (SensitivityType u16 "Photographic sensitivity parameters."
+        (Unknown 0 "Unknown type")
+        (Sos 1 "Standard output sensitivity (SOS)")
+        (Rei 2 "Recommended exposure index (REI)")
+        (IsoSpeed 3 "ISO speed")
+        (SosRei 4 "SOS and REI")
+        (SosIsoSpeed 5 "SOS and ISO speed")
+        (ReiIsoSpeed 6 "REI and ISO speed")
+        (SosReiIsoSpeed 7 "SOS, REI, ISO speed"))
+    (MeteringMode u16 "Metering mode."
+        (Unknown 0 "Unknown mode")
+        (Average 1 "Average")
+        (CenterWeightedAverage 2 "Center-weighted average")
+        (Spot 3 "Spot")
+        (MultiSpot 4 "Multi-spot")
+        (Pattern 5 "Pattern")
+        (Partial 6 "Partial")
+        (Other 255 "Other"))
+    (LightSource u16 "Light source."
+        (Unknown 0 "Unknown light source")
+        (Daylight 1 "Daylight")
+        (Fluorescent 2 "Fluorescent")
+        (Tungsten 3 "Tungsten (incandescent light)")
+        (Flash 4 "Flash")
+        (FineWeather 9 "Fine weather")
+        (CloudyWeather 10 "Cloudy weather")
+        (Shade 11 "Shade")
+        (DaylightFluorescent 12 "Daylight fluorescent (D 5700–7100 K)")
+        (DayWhiteFluorescent 13 "Day white fluorescent (N 4600–5500 K)")
+        (CoolWhiteFluorescent 14 "Cool white fluorescent (W 3800–4500 K)")
+        (WhiteFluorescent 15 "White fluorescent (WW 3250–3800 K)")
+        (WarmWhiteFluorescent 16 "Warm white fluorescent (L 2600–3250 K)")
+        (StandardLightA 17 "Standard light A")
+        (StandardLightB 18 "Standard light B")
+        (StandardLightC 19 "Standard light C")
+        (D55 20 "D55")
+        (D65 21 "D65")
+        (D75 22 "D75")
+        (D50 23 "D50")
+        (IsoStudioTungsten 24 "ISO studio tungsten")
+        (Other 255 "Other light source"))
+    (SensingMethod u16 "Image sensor type."
+        (Undefined 1 "Not defined")
+        (OneChipColorArea 2 "One-chip color area sensor")
+        (TwoChipColorArea 3 "Two-chip color area sensor")
+        (ThreeChipColorArea 4 "Three-chip color area sensor")
+        (ColorSequentialArea 5 "Color sequential area sensor")
+        (Trilinear 7 "Trilinear sensor")
+        (ColorSequentialTrilinear 8 "Color sequential linear sensor"))
+    (CustomRendered u16 "Special processing."
+        (NormalProcess 0 "Normal process")
+        (CustomProcess 1 "Custom process"))
+    (ExposureMode u16 "Exposure mode."
+        (Auto 0 "Auto exposure")
+        (Manual 1 "Manual exposure")
+        (AutoBracket 2 "Auto bracket"))
+    (WhiteBalance u16 "White balance mode."
+        (Auto 0 "Auto")
+        (Manual 1 "Manual"))
+    (SceneCaptureType u16 "The type of scene"
+        (Standard 0 "Standard")
+        (Landscape 1 "Landscape")
+        (Portrait 2 "Portrait")
+        (NightScene 3 "Night scene"))
+    (GainControl u16 "Image gain adjustment rate."
+        (None 0 "None")
+        (LowGainUp 1 "Low gain up")
+        (HighGainUp 2 "High gain up")
+        (LowGainDown 3 "Low gain down")
+        (HighGainDown 4 "High gain down"))
+    (Contrast u16 "Contrast adjustment."
+        (Normal 0 "Normal")
+        (Soft 1 "Soft")
+        (Hard 2 "Hard"))
+    (Saturation u16 "Saturation adjustment."
+        (Normal 0 "Normal")
+        (Low 1 "Low saturation")
+        (High 2 "High saturation"))
+    (Sharpness u16 "Sharpness adjustment."
+        (Normal 0 "Normal")
+        (Soft 1 "Soft")
+        (Hard 2 "Hard"))
+    (SubjectDistanceRange u16 "Distance to the subject"
+        (Unknown 0 "Unknown")
+        (Macro 1 "Macro")
+        (CloseView 2 "Close view")
+        (DistantView 3 "Distant view"))
+    (CompositeImage u16 "Composite image or not."
+        (Unknown 0 "Unknown")
+        (NonComposite 1 "Non-composite image")
+        (GeneralComposite 2 "General composite image")
+        (CompositeWhenShooting 3 "Composite image captured when shooting"))
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum SubjectArea {
-    Point {
-        x: u16,
-        y: u16,
-    },
-    Circle {
-        center_x: u16,
-        center_y: u16,
-        diameter: u16,
-    },
-    Rectangle {
-        center_x: u16,
-        center_y: u16,
-        width: u16,
-        height: u16,
-    },
-}
-
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub struct LensSpecification {
-    pub min_focal_length: UnsignedRational,
-    pub max_focal_length: UnsignedRational,
-    pub min_f_number: UnsignedRational,
-    pub max_f_number: UnsignedRational,
-}
-
-#[derive(Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum MakerNote<'a> {
-    Apple(apple::EntryMap<'a>),
-    Other(&'a [u8]),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum ColorSpace {
-    Srgb,
-    Uncalibrated,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum Component {
-    None,
-    Y,
-    Cb,
-    Cr,
-    R,
-    G,
-    B,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum ExposureProgram {
-    Undefined,
-    Manual,
-    Normal,
-    AperturePriority,
-    ShutterPriority,
-    Creative,
-    Action,
-    Portrait,
-    Landscape,
-}
-
-/// Photographic sensitivity parameters.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum SensitivityType {
-    /// Unknown.
-    Unknown,
-    /// Standard output sensitivity (SOS).
-    Sos,
-    /// Recommended exposure index (REI).
-    Rei,
-    /// ISO speed.
-    IsoSpeed,
-    /// SOS and REI.
-    SosRei,
-    /// SOS and ISO speed.
-    SosIsoSpeed,
-    /// REI and ISO speed.
-    ReiIsoSpeed,
-    /// SOS, REI, ISO speed.
-    SosReiIsoSpeed,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum MeteringMode {
-    Unknown,
-    Average,
-    CenterWeightedAverage,
-    Spot,
-    MultiSpot,
-    Pattern,
-    Partial,
-    Other,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum LightSource {
-    Unknown,
-    Daylight,
-    Fluorescent,
-    Tungsten,
-    Flash,
-    FineWeather,
-    CloudyWeather,
-    Shade,
-    DaylightFluorescent,
-    DayWhiteFluorescent,
-    CoolWhiteFluorescent,
-    WhiteFluorescent,
-    WarmWhiteFluorescent,
-    StandardLightA,
-    StandardLightB,
-    StandardLightC,
-    D55,
-    D65,
-    D75,
-    D50,
-    IsoStudioTungsten,
-    Other,
-}
-
-bitflags! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-    pub struct Flash: u16 {
-        const FIRED                            = 0b000_00_00_1;
-        const STROBE_RETURN_LIGHT_NOT_DETECTED = 0b000_00_10_0;
-        const STROBE_RETURN_LIGHT_DETECTED     = 0b000_00_11_0;
-        const COMPULSORY_FLASH_FIRING          = 0b000_01_00_0;
-        const COMPULSORY_FLASH_SUPPRESSION     = 0b000_10_00_0;
-        const AUTO_MODE                        = 0b000_11_00_0;
-        const NO_FLASH_FUNCTION                = 0b001_00_00_0;
-        const RED_EYE_REDUCTION_SUPPORTED      = 0b010_00_00_0;
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum SensingMethod {
-    Undefined,
-    OneChipColorArea,
-    TwoChipColorArea,
-    ThreeChipColorArea,
-    ColorSequentialArea,
-    Trilinear,
-    ColorSequentialTrilinear,
-}
-
+/// Image source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum FileSource {
+    /// Others.
     Other,
+    /// Scanner of transparent type.
     TransparentScanner,
+    /// Scanner of reflex type.
     ReflexScanner,
+    /// DSC.
     Dsc,
 }
 
+/// Scene type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum SceneType {
@@ -300,80 +243,132 @@ pub enum SceneType {
     DirectPhoto,
 }
 
+/// Timezone offset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FixedOffset(pub chrono::FixedOffset);
+
+#[cfg(feature = "serde")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
+impl serde::Serialize for FixedOffset {
+    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        s.collect_str(&self.0)
+    }
+}
+
+/// The location and are of the main subject in the scene.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum CustomRendered {
-    NormalProcess,
-    CustomProcess,
+pub enum SubjectArea {
+    /// Single point.
+    Point {
+        /// X coordinate.
+        x: u16,
+        /// Y coordinate.
+        y: u16,
+    },
+    /// Circle containing the subject.
+    Circle {
+        /// X coordinate of the center.
+        center_x: u16,
+        /// Y coordinate of the center.
+        center_y: u16,
+        /// Circle diameter.
+        diameter: u16,
+    },
+    /// Rectangle containing the subject.
+    Rectangle {
+        /// X coordinate of the center.
+        center_x: u16,
+        /// Y coordinate of the center.
+        center_y: u16,
+        /// Width.
+        width: u16,
+        /// Height.
+        height: u16,
+    },
 }
 
+/// Range of camera lens parameters.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct LensSpecification {
+    /// Minimum focal length and associated minimum F number.
+    pub min: LensSpecificationComponent,
+    /// Maximum focal length and associated minimum F number.
+    pub max: LensSpecificationComponent,
+}
+
+/// Camera lens parameters.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct LensSpecificationComponent {
+    /// Focal length in millimeters.
+    pub focal_length: UnsignedRational,
+    /// Minimum F number.
+    pub min_f_number: UnsignedRational,
+}
+
+/// Manufacturer note.
+///
+/// This tag is used to store vendor-specific metadata.
+///
+/// `fastexif` can parse some such metadata when the corresponding feature is enabled.
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub enum MakerNote<'a> {
+    /// Apple-specific metadata.
+    #[cfg(feature = "apple")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "apple")))]
+    Apple(apple::EntryMap<'a>),
+    /// Unknown metadata.
+    Other(&'a [u8]),
+}
+
+/// Color component.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum ExposureMode {
-    Auto,
-    Manual,
-    AutoBracket,
+pub enum Component {
+    /// Doesn't exist.
+    None,
+    /// Luminance.
+    Y,
+    /// Chrominance (blue-difference).
+    Cb,
+    /// Chrominance (red-differenceV).
+    Cr,
+    /// Red.
+    R,
+    /// Green.
+    G,
+    /// Blue.
+    B,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum WhiteBalance {
-    Auto,
-    Manual,
-}
-
-parse_enum! {
-    SceneCaptureType u16
-    (Standard 0)
-    (Landscape 1)
-    (Portrait 2)
-    (NightScene 3)
-}
-
-parse_enum! {
-    GainControl u16
-    (None 0)
-    (LowGainUp 1)
-    (HighGainUp 2)
-    (LowGainDown 3)
-    (HighGainDown 4)
-}
-
-parse_enum! {
-    Contrast u16
-    (Normal 0)
-    (Soft 1)
-    (Hard 2)
-}
-
-parse_enum! {
-    Saturation u16
-    (Normal 0)
-    (Low 1)
-    (High 2)
-}
-
-parse_enum! {
-    Sharpness u16
-    (Normal 0)
-    (Soft 1)
-    (Hard 2)
-}
-
-parse_enum! {
-    SubjectDistanceRange u16
-    (Unknown 0)
-    (Macro 1)
-    (CloseView 2)
-    (DistantView 3)
-}
-
-parse_enum! {
-    CompositeImage u16
-    (Unknown 0)
-    (NonComposite 1)
-    (GeneralComposite 2)
-    (CompositeWhenShooting 3)
+bitflags! {
+    /// Flash parameters.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+    pub struct Flash: u16 {
+        /// Flash fired.
+        const FIRED                            = 0b000_00_00_1;
+        /// Strobe return light not detected.
+        const STROBE_RETURN_LIGHT_NOT_DETECTED = 0b000_00_10_0;
+        /// Strobe return light detected.
+        const STROBE_RETURN_LIGHT_DETECTED     = 0b000_00_11_0;
+        /// Compulsory flash firing.
+        const COMPULSORY_FLASH_FIRING          = 0b000_01_00_0;
+        /// Compulsory flash suppression.
+        const COMPULSORY_FLASH_SUPPRESSION     = 0b000_10_00_0;
+        /// Auto mode.
+        const AUTO_MODE                        = 0b000_11_00_0;
+        /// No flash function.
+        const NO_FLASH_FUNCTION                = 0b001_00_00_0;
+        /// Red-eye reduction supported.
+        const RED_EYE_REDUCTION_SUPPORTED      = 0b010_00_00_0;
+    }
 }
 
 impl<'a> crate::RawEntry<'a> {
@@ -472,23 +467,19 @@ impl<'a> crate::RawEntry<'a> {
         let [
             min_focal_length,
             max_focal_length,
-            min_f_number,
-            max_f_number,
+            min_f_number_in_min_focal_length,
+            min_f_number_in_max_focal_length,
         ] = self.parse_unsigned_rational_4()?;
         Ok(LensSpecification {
-            min_focal_length,
-            max_focal_length,
-            min_f_number,
-            max_f_number,
+            min: LensSpecificationComponent {
+                focal_length: min_focal_length,
+                min_f_number: min_f_number_in_min_focal_length,
+            },
+            max: LensSpecificationComponent {
+                focal_length: max_focal_length,
+                min_f_number: min_f_number_in_max_focal_length,
+            },
         })
-    }
-
-    fn parse_color_space(&self) -> Result<ColorSpace, InvalidExif> {
-        match self.parse_u16()? {
-            1 => Ok(ColorSpace::Srgb),
-            u16::MAX => Ok(ColorSpace::Uncalibrated),
-            _ => Err(InvalidExif),
-        }
     }
 
     fn parse_components_configuration(&self) -> Result<[Component; 4], InvalidExif> {
@@ -515,93 +506,9 @@ impl<'a> crate::RawEntry<'a> {
         }
     }
 
-    fn parse_exposure_program(&self) -> Result<ExposureProgram, InvalidExif> {
-        match self.parse_u16()? {
-            0 => Ok(ExposureProgram::Undefined),
-            1 => Ok(ExposureProgram::Manual),
-            2 => Ok(ExposureProgram::Normal),
-            3 => Ok(ExposureProgram::AperturePriority),
-            4 => Ok(ExposureProgram::ShutterPriority),
-            5 => Ok(ExposureProgram::Creative),
-            6 => Ok(ExposureProgram::Action),
-            7 => Ok(ExposureProgram::Portrait),
-            8 => Ok(ExposureProgram::Landscape),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_sensitivity_type(&self) -> Result<SensitivityType, InvalidExif> {
-        match self.parse_u16()? {
-            0 => Ok(SensitivityType::Unknown),
-            1 => Ok(SensitivityType::Sos),
-            2 => Ok(SensitivityType::Rei),
-            3 => Ok(SensitivityType::IsoSpeed),
-            4 => Ok(SensitivityType::SosRei),
-            5 => Ok(SensitivityType::SosIsoSpeed),
-            6 => Ok(SensitivityType::ReiIsoSpeed),
-            7 => Ok(SensitivityType::SosReiIsoSpeed),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_metering_mode(&self) -> Result<MeteringMode, InvalidExif> {
-        match self.parse_u16()? {
-            0 => Ok(MeteringMode::Unknown),
-            1 => Ok(MeteringMode::Average),
-            2 => Ok(MeteringMode::CenterWeightedAverage),
-            3 => Ok(MeteringMode::Spot),
-            4 => Ok(MeteringMode::MultiSpot),
-            5 => Ok(MeteringMode::Pattern),
-            6 => Ok(MeteringMode::Partial),
-            255 => Ok(MeteringMode::Other),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_light_source(&self) -> Result<LightSource, InvalidExif> {
-        match self.parse_u16()? {
-            0 => Ok(LightSource::Unknown),
-            1 => Ok(LightSource::Daylight),
-            2 => Ok(LightSource::Fluorescent),
-            3 => Ok(LightSource::Tungsten),
-            4 => Ok(LightSource::Flash),
-            9 => Ok(LightSource::FineWeather),
-            10 => Ok(LightSource::CloudyWeather),
-            11 => Ok(LightSource::Shade),
-            12 => Ok(LightSource::DaylightFluorescent),
-            13 => Ok(LightSource::DayWhiteFluorescent),
-            14 => Ok(LightSource::CoolWhiteFluorescent),
-            15 => Ok(LightSource::WhiteFluorescent),
-            16 => Ok(LightSource::WarmWhiteFluorescent),
-            17 => Ok(LightSource::StandardLightA),
-            18 => Ok(LightSource::StandardLightB),
-            19 => Ok(LightSource::StandardLightC),
-            20 => Ok(LightSource::D55),
-            21 => Ok(LightSource::D65),
-            22 => Ok(LightSource::D75),
-            23 => Ok(LightSource::D50),
-            24 => Ok(LightSource::IsoStudioTungsten),
-            255 => Ok(LightSource::Other),
-            _ => Err(InvalidExif),
-        }
-    }
-
     fn parse_flash(&self) -> Result<Flash, InvalidExif> {
         let bits = self.parse_u16()?;
         Ok(Flash::from_bits_retain(bits))
-    }
-
-    fn parse_sensing_method(&self) -> Result<SensingMethod, InvalidExif> {
-        match self.parse_u16()? {
-            1 => Ok(SensingMethod::Undefined),
-            2 => Ok(SensingMethod::OneChipColorArea),
-            3 => Ok(SensingMethod::TwoChipColorArea),
-            4 => Ok(SensingMethod::ThreeChipColorArea),
-            5 => Ok(SensingMethod::ColorSequentialArea),
-            7 => Ok(SensingMethod::Trilinear),
-            8 => Ok(SensingMethod::ColorSequentialTrilinear),
-            _ => Err(InvalidExif),
-        }
     }
 
     fn parse_file_source(&self) -> Result<FileSource, InvalidExif> {
@@ -617,31 +524,6 @@ impl<'a> crate::RawEntry<'a> {
     fn parse_scene_type(&self) -> Result<SceneType, InvalidExif> {
         match self.parse_bytes()? {
             [1] => Ok(SceneType::DirectPhoto),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_custom_rendered(&self) -> Result<CustomRendered, InvalidExif> {
-        match self.parse_u16()? {
-            0 => Ok(CustomRendered::NormalProcess),
-            1 => Ok(CustomRendered::CustomProcess),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_exposure_mode(&self) -> Result<ExposureMode, InvalidExif> {
-        match self.parse_u16()? {
-            0 => Ok(ExposureMode::Auto),
-            1 => Ok(ExposureMode::Manual),
-            2 => Ok(ExposureMode::AutoBracket),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_white_balance(&self) -> Result<WhiteBalance, InvalidExif> {
-        match self.parse_u16()? {
-            0 => Ok(WhiteBalance::Auto),
-            1 => Ok(WhiteBalance::Manual),
             _ => Err(InvalidExif),
         }
     }

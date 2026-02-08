@@ -2,10 +2,11 @@ use crate::Endian;
 use crate::InvalidExif;
 use crate::ParseOptions;
 use crate::UnsignedRational;
-use crate::ValueRef;
+use crate::Value;
+use crate::define_tag_enum;
+use crate::define_value_enums;
 use crate::exif;
 use crate::gps;
-use crate::make_tag_enum_v2;
 use crate::to_date_time;
 
 use chrono::DateTime;
@@ -14,8 +15,8 @@ use chrono::Utc;
 
 use alloc::vec::Vec;
 
-make_tag_enum_v2! {
-    Tag "TIFF tags"
+define_tag_enum! {
+    Tag "TIFF tag"
     Entry "TIFF entry"
     EntryMap "TIFF entries"
     (Iter)
@@ -47,81 +48,61 @@ make_tag_enum_v2! {
     ("Bytes of JPEG data" JpegInterchangeFormatLength 514 (u32) parse_u32)
     ("Color space transformation matrix coefficients" YCbCrCoefficients 529 ([UnsignedRational; 3]) parse_unsigned_rational_3)
     ("Subsampling ratio of Y to C" YCbCrSubSampling 530 (YCbCrSubSampling) parse_y_cb_cr_sub_sampling)
-    ("Y and C positioning" YCbCrPositioning 531 (YCbCrPositioning) parse_y_cb_cr_positionting)
+    ("Y and C positioning" YCbCrPositioning 531 (YCbCrPositioning) parse_y_cb_cr_positioning)
     ("Pair of black and white reference values" ReferenceBlackWhite 532 (ReferenceBlackWhite) parse_reference_black_white)
     ("Copyright holder" Copyright 33432 (&'a str) parse_str)
     ("Exif entries" Exif 34665 (exif::EntryMap<'a>) parse_exif 1)
     ("GPS info entries" GpsInfo 34853 (gps::EntryMap<'a>) parse_gps 1)
 }
 
-#[derive(Debug, Clone)]
+define_value_enums! {
+    (PlanarConfiguration u16 "Pixel components' storage format."
+        (Chunky 1 "Chunky (interleaved) format.")
+        (Planar 2 "Planar format."))
+    (ResolutionUnit u16 "Image resolution unit."
+        (Inches 2 "Inches")
+        (Centimeters 3 "Centimeters"))
+    (YCbCrPositioning u16 "The position of chrominance components with respect to luminance component."
+        (Centered 1 "Centered")
+        (CoSited 2 "Co-sited"))
+    (Compression u16 "Compression scheme."
+        (Uncompressed 1 "No compression")
+        (Jpeg 6 "JPEG compression"))
+    (PhotometricInterpretation u16 "Pixels' color space."
+        (Rgb 2 "RGB color space.")
+        (YCbCr 6 "YCbCr color space."))
+    (Orientation u16 "Image orientation."
+        (Normal 1 "No rotation, no mirroring.")
+        (MirrorHorizontally 2 "Mirror horizontally.")
+        (MirrorBoth 3 "Mirror both horizontally and vertically.")
+        (MirrorVertically 4 "Mirror vertically.")
+        (MirrorMainDiagonal 5 "Mirror over main diagonal.")
+        (RotateClockwise 6 "Rotate by 90 degrees clockwise.")
+        (MirrorAntidiagonal 7 "Mirror over antidiagonal.")
+        (RotateCounterClockwise 8 "Rotate by 90 degrees counter-clockwise."))
+}
+
+/// Color chromaticity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Chromaticity {
+    /// Hue component.
     pub hue: UnsignedRational,
+    /// Saturation (intensity) component.
     pub saturation: UnsignedRational,
 }
 
+/// Reference black point and white point values.
+///
+/// Points are specified by three color components, RGB or YCbCr depending on
+/// [`PhotometricInterpretation`](Entry::PhotometricInterpretation).
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ReferenceBlackWhite {
+    /// Black point.
     pub black: [UnsignedRational; 3],
+    /// White point.
     pub white: [UnsignedRational; 3],
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum PlanarConfiguration {
-    Chunky,
-    Planar,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum ResolutionUnit {
-    Centimeters,
-    Inches,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum YCbCrPositioning {
-    Centered,
-    CoSited,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum Compression {
-    Uncompressed,
-    Jpeg,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum PhotometricInterpretation {
-    Rgb,
-    YCbCr,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum Orientation {
-    /// No rotation, no mirroring.
-    Normal,
-    /// Mirror horizontally.
-    MirrorHorizontally,
-    /// Rotate 180 degrees (mirror both horizontally and vertically).
-    MirrorBoth,
-    /// Mirror vertically.
-    MirrorVertically,
-    /// Mirror over main diagonal.
-    MirrorMainDiagonal,
-    /// Rotate 90 degrees clockwise.
-    Rotate90Cw,
-    /// Mirror over antidiagonal.
-    MirrorAntidiagonal,
-    /// Rotate 90 degrees counter-clockwise.
-    Rotate90Ccw,
 }
 
 /// Chromaticity subsampling.
@@ -167,60 +148,6 @@ impl<'a> crate::RawEntry<'a> {
         })
     }
 
-    fn parse_planar_configuration(&self) -> Result<PlanarConfiguration, InvalidExif> {
-        match self.parse_u16()? {
-            1 => Ok(PlanarConfiguration::Chunky),
-            2 => Ok(PlanarConfiguration::Planar),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_resolution_unit(&self) -> Result<ResolutionUnit, InvalidExif> {
-        match self.parse_u16()? {
-            2 => Ok(ResolutionUnit::Inches),
-            3 => Ok(ResolutionUnit::Centimeters),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_y_cb_cr_positionting(&self) -> Result<YCbCrPositioning, InvalidExif> {
-        match self.parse_u16()? {
-            1 => Ok(YCbCrPositioning::Centered),
-            2 => Ok(YCbCrPositioning::CoSited),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_compression(&self) -> Result<Compression, InvalidExif> {
-        match self.parse_u16()? {
-            1 => Ok(Compression::Uncompressed),
-            6 => Ok(Compression::Jpeg),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_photometric_interpretation(&self) -> Result<PhotometricInterpretation, InvalidExif> {
-        match self.parse_u16()? {
-            2 => Ok(PhotometricInterpretation::Rgb),
-            6 => Ok(PhotometricInterpretation::YCbCr),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_orientation(&self) -> Result<Orientation, InvalidExif> {
-        match self.parse_u16()? {
-            1 => Ok(Orientation::Normal),
-            2 => Ok(Orientation::MirrorHorizontally),
-            3 => Ok(Orientation::MirrorBoth),
-            4 => Ok(Orientation::MirrorVertically),
-            5 => Ok(Orientation::MirrorMainDiagonal),
-            6 => Ok(Orientation::Rotate90Cw),
-            7 => Ok(Orientation::MirrorAntidiagonal),
-            8 => Ok(Orientation::Rotate90Ccw),
-            _ => Err(InvalidExif),
-        }
-    }
-
     fn parse_y_cb_cr_sub_sampling(&self) -> Result<YCbCrSubSampling, InvalidExif> {
         match self.parse_u16_2()? {
             [2, 1] => Ok(YCbCrSubSampling::YCbCr422),
@@ -249,6 +176,7 @@ impl<'a> crate::RawEntry<'a> {
 }
 
 impl<'a> Iter<'a> {
+    /// Create iterator from the provided byte slice.
     pub fn parse(data: &'a [u8]) -> Result<Self, InvalidExif> {
         let data = match data.split_at_checked(10) {
             Some(([_, _, _, _, b'E', b'x', b'i', b'f', 0, 0], rest)) => rest,

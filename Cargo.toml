@@ -19,3 +19,11 @@ serde = { version = "1.0.228", features = ["derive"], default-features = false, 
 
 [lints.clippy]
 unwrap_used = "deny"
+panic = "deny"
+
+[lints.rust]
+missing_docs = "warn"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

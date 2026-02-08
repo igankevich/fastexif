@@ -6,49 +6,23 @@ use chrono::Utc;
 
 use alloc::vec::Vec;
 
+use crate::Endian;
+use crate::Format;
 use crate::InvalidExif;
 use crate::SignedRational;
 use crate::UnsignedRational;
 
+/// Exif tags.
 pub mod exif;
+
+/// GPS tags.
 pub mod gps;
+
+/// Interoperability tags.
 pub mod interop;
+
+/// TIFF tags.
 pub mod tiff;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Endian {
-    Little,
-    Big,
-}
-
-impl Endian {
-    pub fn get_u16(self, b: &[u8]) -> u16 {
-        match self {
-            Endian::Little => u16::from_le_bytes([b[0], b[1]]),
-            Endian::Big => u16::from_be_bytes([b[0], b[1]]),
-        }
-    }
-
-    pub fn get_u32(self, b: &[u8]) -> u32 {
-        match self {
-            Endian::Little => u32::from_le_bytes([b[0], b[1], b[2], b[3]]),
-            Endian::Big => u32::from_be_bytes([b[0], b[1], b[2], b[3]]),
-        }
-    }
-
-    pub fn get_i16(self, b: &[u8]) -> i16 {
-        match self {
-            Endian::Little => i16::from_le_bytes([b[0], b[1]]),
-            Endian::Big => i16::from_be_bytes([b[0], b[1]]),
-        }
-    }
-    pub fn get_i32(self, b: &[u8]) -> i32 {
-        match self {
-            Endian::Little => i32::from_le_bytes([b[0], b[1], b[2], b[3]]),
-            Endian::Big => i32::from_be_bytes([b[0], b[1], b[2], b[3]]),
-        }
-    }
-}
 
 #[derive(Clone)]
 pub(crate) struct RawEntry<'a> {
@@ -67,8 +41,8 @@ pub(crate) fn trim_nul_terminator(bytes: &mut &[u8]) {
 }
 
 impl<'a> RawEntry<'a> {
-    pub fn parse_value(&self) -> Result<ValueRef<'a>, InvalidExif> {
-        ValueRef::parse(self.format, self.len, self.value, self.endian, self.data)
+    pub fn parse_value(&self) -> Result<Value<'a>, InvalidExif> {
+        Value::parse(self.format, self.len, self.value, self.endian, self.data)
     }
 
     pub(crate) fn get_bytes(&self) -> Option<&'a [u8]> {
@@ -202,14 +176,14 @@ impl<'a> RawEntry<'a> {
     }
 
     fn parse_unsigned_rational(&self) -> Result<UnsignedRational, InvalidExif> {
-        let ValueRef::UnsignedRational(value) = self.parse_value()? else {
+        let Value::UnsignedRational(value) = self.parse_value()? else {
             return Err(InvalidExif);
         };
         Ok(value)
     }
 
     fn parse_signed_rational(&self) -> Result<SignedRational, InvalidExif> {
-        let ValueRef::SignedRational(value) = self.parse_value()? else {
+        let Value::SignedRational(value) = self.parse_value()? else {
             return Err(InvalidExif);
         };
         Ok(value)
@@ -241,6 +215,10 @@ impl<'a> RawEntry<'a> {
                 self.endian.get_i32(&buf[20..24]),
             ),
         ])
+    }
+
+    fn parse_u8(&self) -> Result<u8, InvalidExif> {
+        self.parse_value()?.parse_u8()
     }
 
     fn parse_u16(&self) -> Result<u16, InvalidExif> {
@@ -308,17 +286,15 @@ impl<'a> RawEntry<'a> {
         ])
     }
 
-    #[allow(unused)]
     fn parse_vec_u16(&self) -> Result<Vec<u16>, InvalidExif> {
-        let ValueRef::Vec(values) = self.parse_value()? else {
+        let Value::Vec(values) = self.parse_value()? else {
             return Err(InvalidExif);
         };
         values.into_iter().map(|x| x.parse_u16()).collect()
     }
 
-    #[allow(unused)]
     fn parse_vec_u32(&self) -> Result<Vec<u32>, InvalidExif> {
-        let ValueRef::Vec(values) = self.parse_value()? else {
+        let Value::Vec(values) = self.parse_value()? else {
             return Err(InvalidExif);
         };
         values.into_iter().map(|x| x.parse_u32()).collect()
@@ -329,7 +305,7 @@ impl<'a> RawEntry<'a> {
     }
 
     fn parse_naive_date_time(&self) -> Result<NaiveDateTime, InvalidExif> {
-        let ValueRef::Str(string) = self.parse_value()? else {
+        let Value::Str(string) = self.parse_value()? else {
             return Err(InvalidExif);
         };
         let t =
@@ -339,14 +315,14 @@ impl<'a> RawEntry<'a> {
 
     fn parse_str(&self) -> Result<&'a str, InvalidExif> {
         match self.parse_value()? {
-            ValueRef::Str(s) => Ok(s),
+            Value::Str(s) => Ok(s),
             _ => Err(InvalidExif),
         }
     }
 
     fn parse_undefined_as_str(&self) -> Result<&'a str, InvalidExif> {
         match self.parse_value()? {
-            ValueRef::Bytes(s) => core::str::from_utf8(s).map_err(|_| InvalidExif),
+            Value::Bytes(s) => core::str::from_utf8(s).map_err(|_| InvalidExif),
             _ => Err(InvalidExif),
         }
     }
@@ -372,61 +348,37 @@ impl core::fmt::Debug for RawEntry<'_> {
     }
 }
 
-make_format_enum! {
-    Format "Exif entry format."
-    (U8 1)
-    (Ascii 2)
-    (U16 3)
-    (U32 4)
-    (UnsignedRational 5)
-    (I8 6)
-    (Undefined 7)
-    (I16 8)
-    (I32 9)
-    (SignedRational 10)
-    (Utf8 129)
-}
-
-macro_rules! make_format_enum {
-    ($enum: ident $enum_doc: literal
-     $(($name: ident $value: literal))+) => {
-        #[doc = $enum_doc]
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-        pub enum $enum {
-            $($name = $value,)+
-        }
-
-        impl TryFrom<u16> for $enum {
-            type Error = $crate::InvalidExif;
-
-            fn try_from(other: u16) -> Result<$enum, Self::Error> {
-                match other {
-                    $($value => Ok($enum::$name),)+
-                        _ => Err($crate::InvalidExif),
-                }
-            }
-        }
-    };
-}
-
-pub(crate) use make_format_enum;
-
+/// A enumeration of all possible value types and Exif tag can have.
+///
+/// NOTE: It is more efficient to parse raw entries into `Entry` types
+/// rather than into generic `Value` type.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ValueRef<'a> {
+pub enum Value<'a> {
+    /// Unsigned 8-bit integer.
     U8(u8),
+    /// Signed 8-bit integer.
     I8(i8),
+    /// Unsigned 16-bit integer.
     U16(u16),
+    /// Signed 16-bit integer.
     I16(i16),
+    /// Unsigned 32-bit integer.
     U32(u32),
+    /// Signed 32-bit integer.
     I32(i32),
+    /// String.
     Str(&'a str),
+    /// Bytes.
     Bytes(&'a [u8]),
+    /// Unsigned rational number.
     UnsignedRational(UnsignedRational),
+    /// Signed rational number.
     SignedRational(SignedRational),
+    /// A list of values.
     Vec(Vec<Self>),
 }
 
-impl<'a> ValueRef<'a> {
+impl<'a> Value<'a> {
     pub(crate) fn parse(
         format: Format,
         len: usize,
@@ -530,7 +482,23 @@ impl<'a> ValueRef<'a> {
     }
 }
 
-impl ValueRef<'_> {
+impl Value<'_> {
+    fn parse_u8(self) -> Result<u8, InvalidExif> {
+        match self {
+            Self::U8(x) => Ok(x),
+            Self::I8(x) => x.try_into().map_err(|_| InvalidExif),
+            Self::U16(x) => x.try_into().map_err(|_| InvalidExif),
+            Self::I16(x) => x.try_into().map_err(|_| InvalidExif),
+            Self::U32(x) => x.try_into().map_err(|_| InvalidExif),
+            Self::I32(x) => x.try_into().map_err(|_| InvalidExif),
+            Self::Str(x) => x.parse().map_err(|_| InvalidExif),
+            Self::Bytes(..)
+            | Self::UnsignedRational(..)
+            | Self::SignedRational(..)
+            | Self::Vec(..) => Err(InvalidExif),
+        }
+    }
+
     fn parse_u16(self) -> Result<u16, InvalidExif> {
         match self {
             Self::U8(x) => Ok(x.into()),
@@ -581,7 +549,8 @@ impl ValueRef<'_> {
 }
 
 #[cfg(feature = "serde")]
-impl serde::Serialize for ValueRef<'_> {
+#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
+impl serde::Serialize for Value<'_> {
     fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -655,7 +624,7 @@ impl<'a> Iter<'a> {
             self.entries = entries;
         }
         let tag = self.endian.get_u16(&self.entries[0..2]);
-        let format = match self.endian.get_u16(&self.entries[2..4]).try_into() {
+        let format = match Format::try_from_u16(self.endian.get_u16(&self.entries[2..4])) {
             Ok(format) => format,
             Err(e) => return Some(Err(e)),
         };
@@ -692,12 +661,15 @@ pub(crate) fn to_date_time(
 
 pub(crate) const ENTRY_LEN: usize = 12;
 
+/// Parse Exif metadata from the provided byte slice.
+///
+/// Returns an iterator over raw entries.
 #[inline]
 pub fn parse(data: &[u8]) -> Result<tiff::Iter<'_>, InvalidExif> {
     tiff::Iter::parse(data)
 }
 
-macro_rules! make_tag_enum_v2 {
+macro_rules! define_tag_enum {
     (
         $enum: ident $enum_doc: literal
         $entry_enum: ident $entry_enum_doc: literal
@@ -711,6 +683,7 @@ macro_rules! make_tag_enum_v2 {
         #[cfg_attr(feature = "serde", derive(serde::Serialize))]
         pub enum $enum {
             $(#[doc = $doc] $name,)*
+            /// Unknown tag.
             Other(u16) = u16::MAX,
         }
 
@@ -748,7 +721,13 @@ macro_rules! make_tag_enum_v2 {
         #[cfg_attr(feature = "serde", derive(serde::Serialize))]
         pub enum $entry_enum<'a> {
             $(#[doc = $doc] $name($type) = $value,)*
-            Other { tag: u16, value: ValueRef<'a> } = u16::MAX,
+            /// Unknown entry.
+            Other {
+                /// Tag number.
+                tag: u16,
+                /// Tag value.
+                value: Value<'a>
+            } = u16::MAX,
         }
 
         impl $entry_enum<'_> {
@@ -822,6 +801,7 @@ macro_rules! make_tag_enum_v2 {
         }
 
         #[cfg(feature = "serde")]
+        #[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
         impl serde::Serialize for $entry_map<'_> {
             fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
             where
@@ -852,9 +832,11 @@ macro_rules! make_tag_enum_v2 {
         paste::paste! {
             impl<'a> RawEntry<'a> {
                 /// Parse entry tag and entry value.
-                pub fn parse(&self, #[allow(unused)] options: crate::ParseOptions) -> Result<Entry<'a>, InvalidExif> {
+                ///
+                /// This is more efficient than [`parse_value`](Self::parse_value).
+                pub fn parse(&self, #[allow(unused)] options: $crate::ParseOptions) -> Result<Entry<'a>, InvalidExif> {
                     #[allow(unused)]
-                    fn gobble(_a: u8, options: crate::ParseOptions) -> crate::ParseOptions {
+                    fn gobble(_a: u8, options: $crate::ParseOptions) -> $crate::ParseOptions {
                         options
                     }
 
@@ -877,7 +859,9 @@ macro_rules! make_tag_enum_v2 {
                 }
 
                 /// Parse entry value.
-                pub fn parse_value(&self) -> Result<ValueRef<'a>, InvalidExif> {
+                ///
+                /// This is less efficient than [`parse`](Self::parse_value) because of the generic [`Value`] type.
+                pub fn parse_value(&self) -> Result<Value<'a>, InvalidExif> {
                     self.0.parse_value()
                 }
             }
@@ -889,6 +873,9 @@ macro_rules! make_tag_enum_v2 {
             pub struct $iter<'a>(pub(crate) crate::Iter<'a>);
 
             impl<'a> $iter<'a> {
+                /// Parse remaining entries and collect results into an entry map.
+                ///
+                /// Entry map allows one to access entries via convenience wrapper methods rather than sequentially.
                 pub fn into_entry_map(self, options: crate::ParseOptions) -> Result<EntryMap<'a>, InvalidExif> {
                     let mut map = EntryMap::new();
                     for raw_entry in self {
@@ -928,79 +915,62 @@ macro_rules! make_tag_enum_v2 {
     };
 }
 
-pub(crate) use make_tag_enum_v2;
+pub(crate) use define_tag_enum;
 
-
-macro_rules! parse_enum {
-    ($enum: ident
+macro_rules! define_value_enums {
+    ($(($enum: ident
      $repr: ident
-     $(($variant: ident $value: literal))+) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-        #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-        pub enum $enum {
-            $( $variant = $value, )+
-        }
+     $doc: literal
+     $(($variant: ident $value: literal $variant_doc: literal))+))+) => {
+        $(
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+            #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+            #[doc = $doc]
+            pub enum $enum {
+                $( #[doc = $variant_doc] $variant, )+
+            }
 
-        paste::paste! {
-            impl<'a> $crate::RawEntry<'a> {
-                fn [<parse_ $enum:snake>](&self) -> Result<$enum, InvalidExif> {
-                    match self.[<parse_ $repr>]()? {
-                        $( $value => Ok($enum::$variant), )+
-                        _ => Err(InvalidExif),
+            paste::paste! {
+                impl<'a> $crate::RawEntry<'a> {
+                    fn [<parse_ $enum:snake>](&self) -> Result<$enum, InvalidExif> {
+                        match self.[<parse_ $repr>]()? {
+                            $( $value => Ok($enum::$variant), )+
+                            _ => Err(InvalidExif),
+                        }
                     }
                 }
             }
-        }
+        )+
     };
 }
 
-pub(crate) use parse_enum;
+pub(crate) use define_value_enums;
 
-macro_rules! parse_str_enum {
-    ($enum: ident
-     $(($variant: ident ($($value: literal)+)))+) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-        #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-        pub enum $enum {
-            $( $variant, )+
-        }
+macro_rules! define_value_str_enums {
+    ($(($enum: ident
+        $doc: literal
+     $(($variant: ident ($($value: literal)+) $variant_doc: literal))+))+) => {
+        $(
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+            #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+            #[doc = $doc]
+            pub enum $enum {
+                $( #[doc = $variant_doc] $variant, )+
+            }
 
-        paste::paste! {
-            impl<'a> $crate::RawEntry<'a> {
-                fn [<parse_ $enum:snake>](&self) -> Result<$enum, InvalidExif> {
-                    let bytes = self.get_bytes().ok_or(InvalidExif)?;
-                    match bytes {
-                        $( [$($value,)+ 0, ..] => Ok($enum::$variant), )+
-                        _ => Err(InvalidExif),
+            paste::paste! {
+                impl<'a> $crate::RawEntry<'a> {
+                    fn [<parse_ $enum:snake>](&self) -> Result<$enum, InvalidExif> {
+                        let bytes = self.get_bytes().ok_or(InvalidExif)?;
+                        match bytes {
+                            $( [$($value,)+ 0, ..] => Ok($enum::$variant), )+
+                            _ => Err(InvalidExif),
+                        }
                     }
                 }
             }
-        }
+        )+
     };
 }
 
-pub(crate) use parse_str_enum;
-
-#[derive(Clone, Copy)]
-pub struct ParseOptions {
-    pub(crate) ignore_unparsable_nested_entries: bool,
-}
-
-impl ParseOptions {
-    pub const fn new() -> Self {
-        Self {
-            ignore_unparsable_nested_entries: true,
-        }
-    }
-
-    pub const fn ignore_unparsable_nested_entries(mut self, value: bool) -> Self {
-        self.ignore_unparsable_nested_entries = value;
-        self
-    }
-}
-
-impl Default for ParseOptions {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+pub(crate) use define_value_str_enums;

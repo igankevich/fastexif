@@ -1,4 +1,4 @@
-/// Exif data failed to parse.
+/// Exif parsing error.
 #[derive(Debug)]
 pub struct InvalidExif;
 
@@ -9,4 +9,5 @@ impl core::fmt::Display for InvalidExif {
 }
 
 #[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl std::error::Error for InvalidExif {}
