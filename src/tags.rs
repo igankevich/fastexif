@@ -639,6 +639,8 @@ impl<'a> Iter<'a> {
             if offset == 0 {
                 return None;
             }
+            // TODO we need to check that we haven't read the file at this offset already to
+            // eliminate loops
             let Some(buf) = self.data.get(offset..) else {
                 return Some(Err(InvalidExif));
             };
@@ -927,6 +929,57 @@ macro_rules! make_tag_enum_v2 {
 }
 
 pub(crate) use make_tag_enum_v2;
+
+
+macro_rules! parse_enum {
+    ($enum: ident
+     $repr: ident
+     $(($variant: ident $value: literal))+) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+        pub enum $enum {
+            $( $variant = $value, )+
+        }
+
+        paste::paste! {
+            impl<'a> $crate::RawEntry<'a> {
+                fn [<parse_ $enum:snake>](&self) -> Result<$enum, InvalidExif> {
+                    match self.[<parse_ $repr>]()? {
+                        $( $value => Ok($enum::$variant), )+
+                        _ => Err(InvalidExif),
+                    }
+                }
+            }
+        }
+    };
+}
+
+pub(crate) use parse_enum;
+
+macro_rules! parse_str_enum {
+    ($enum: ident
+     $(($variant: ident ($($value: literal)+)))+) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+        pub enum $enum {
+            $( $variant, )+
+        }
+
+        paste::paste! {
+            impl<'a> $crate::RawEntry<'a> {
+                fn [<parse_ $enum:snake>](&self) -> Result<$enum, InvalidExif> {
+                    let bytes = self.get_bytes().ok_or(InvalidExif)?;
+                    match bytes {
+                        $( [$($value,)+ 0, ..] => Ok($enum::$variant), )+
+                        _ => Err(InvalidExif),
+                    }
+                }
+            }
+        }
+    };
+}
+
+pub(crate) use parse_str_enum;
 
 #[derive(Clone, Copy)]
 pub struct ParseOptions {

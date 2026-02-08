@@ -1,5 +1,5 @@
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UnsignedRational(pub u32, pub u32);
 
 impl UnsignedRational {
@@ -24,8 +24,8 @@ impl core::fmt::Debug for UnsignedRational {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SignedRational(pub i32, pub i32);
 
 impl SignedRational {

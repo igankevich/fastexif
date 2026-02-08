@@ -7,12 +7,9 @@ use crate::SignedRational;
 use crate::ValueRef;
 use crate::make_tag_enum_v2;
 
-use alloc::vec::Vec;
 use bitflags::bitflags;
-
-mod bplist;
-
-use self::bplist::ResolvedValueRef;
+use serde::Deserialize;
+use serde::Serialize;
 
 make_tag_enum_v2! {
     Tag "Apple tags"
@@ -27,9 +24,10 @@ make_tag_enum_v2! {
     //("Tag 79" Tag79 79 (ResolvedValueRef<'a>) parse_property_list)
 }
 
+const MAX_RECURSION: u32 = 10;
+
 /// Camera type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub enum CameraType {
     Back,
     Front,
@@ -37,8 +35,7 @@ pub enum CameraType {
 }
 
 bitflags! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
     pub struct RunTimeFlags: u32 {
         const VALID = 0b1;
         const HAS_BEEN_ROUNDED = 0b10;
@@ -48,8 +45,31 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+impl<'de> Deserialize<'de> for RunTimeFlags {
+    fn deserialize<D>(input: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        struct U32Visitor;
+        impl<'de> serde::de::Visitor<'de> for U32Visitor {
+            type Value = RunTimeFlags;
+
+            fn expecting(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
+                formatter.write_str("u32")
+            }
+
+            fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(RunTimeFlags::from_bits_retain(v))
+            }
+        }
+        input.deserialize_u32(U32Visitor)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RunTime {
     pub flags: RunTimeFlags,
     pub value: i64,
@@ -139,17 +159,6 @@ impl Format {
 }
 
 impl<'a> crate::RawEntry<'a> {
-    fn parse_property_list(&self) -> Result<ResolvedValueRef<'a>, InvalidExif> {
-        let bytes = self.get_bytes().ok_or(InvalidExif)?;
-        let values: Vec<bplist::ValueRef<'a>> =
-            bplist::PropertyList::parse(bytes)?.collect::<Result<Vec<_>, _>>()?;
-        if values.is_empty() {
-            return Err(InvalidExif);
-        }
-        let first = values[0].resolve(&values)?;
-        Ok(first)
-    }
-
     fn parse_camera_type(&self) -> Result<CameraType, InvalidExif> {
         match self.parse_i32()? {
             1 => Ok(CameraType::Back),
@@ -159,45 +168,9 @@ impl<'a> crate::RawEntry<'a> {
     }
 
     fn parse_run_time(&self) -> Result<RunTime, InvalidExif> {
-        let props = self.parse_property_list()?;
-        let ResolvedValueRef::Dictionary(dict) = props else {
-            return Err(InvalidExif);
-        };
-        let mut run_time = RunTime {
-            epoch: 0,
-            value: 0,
-            timescale: 0,
-            flags: RunTimeFlags::empty(),
-        };
-        for (key, value) in dict.iter() {
-            match key {
-                ResolvedValueRef::Str("epoch") => {
-                    let ResolvedValueRef::Int(epoch) = value else {
-                        return Err(InvalidExif);
-                    };
-                    run_time.epoch = *epoch;
-                }
-                ResolvedValueRef::Str("flags") => {
-                    let ResolvedValueRef::Int(flags) = value else {
-                        return Err(InvalidExif);
-                    };
-                    run_time.flags = RunTimeFlags::from_bits_retain(*flags as u32);
-                }
-                ResolvedValueRef::Str("timescale") => {
-                    let ResolvedValueRef::Int(timescale) = value else {
-                        return Err(InvalidExif);
-                    };
-                    run_time.timescale = *timescale as i32;
-                }
-                ResolvedValueRef::Str("value") => {
-                    let ResolvedValueRef::Int(value) = value else {
-                        return Err(InvalidExif);
-                    };
-                    run_time.value = *value;
-                }
-                _ => {}
-            }
-        }
+        let bytes = self.get_bytes().ok_or(InvalidExif)?;
+        let run_time: RunTime =
+            bplist::from_slice(bytes, MAX_RECURSION).map_err(|_| InvalidExif)?;
         Ok(run_time)
     }
 }

@@ -2,6 +2,8 @@ use crate::InvalidExif;
 use crate::UnsignedRational;
 use crate::ValueRef;
 use crate::make_tag_enum_v2;
+use crate::parse_enum;
+use crate::parse_str_enum;
 
 use chrono::DateTime;
 use chrono::NaiveDate;
@@ -22,9 +24,9 @@ make_tag_enum_v2! {
     ("Altitude" Altitude 6 (UnsignedRational) parse_altitude)
     ("GPS time (atomic clock)" TimeStamp 7 (NaiveTime) parse_time_stamp)
     ("GPS satellites used for measurement" Satellites 8 (&'a str) parse_str)
-    ("GPS receiver status" Status 9 (&'a str) parse_str)
-    ("GPS measurement mode" MeasureMode 10 (&'a str) parse_str)
-    ("Measurement precision" Dop 11 (UnsignedRational) parse_unsigned_rational)
+    ("GPS receiver status" Status 9 (Status) parse_status)
+    ("GPS measurement mode" MeasureMode 10 (MeasureMode) parse_measure_mode)
+    ("Measurement precision (data degree of precision)" Dop 11 (UnsignedRational) parse_unsigned_rational)
     ("Speed unit" SpeedRef 12 (SpeedRef) parse_speed_ref)
     ("Speed of GPS receiver" Speed 13 (UnsignedRational) parse_unsigned_rational)
     ("Reference for direction of movement" TrackRef 14 (Direction) parse_direction)
@@ -43,8 +45,8 @@ make_tag_enum_v2! {
     ("Name of GPS processing method" ProcessingMethod 27 (&'a [u8]) parse_bytes)
     ("Name of GPS area" AreaInformation 28 (&'a [u8]) parse_bytes)
     ("GPS date" DateStamp 29 (NaiveDate) parse_date_stamp)
-    ("GPS differential correction" Differential 30 (u16) parse_u16)
-    ("Horizontal positioning error" HPositioningError 31 (UnsignedRational) parse_unsigned_rational)
+    ("GPS differential correction" Differential 30 (Differential) parse_differential)
+    ("Horizontal positioning error in meters" HPositioningError 31 (UnsignedRational) parse_unsigned_rational)
 }
 
 impl EntryMap<'_> {
@@ -167,6 +169,24 @@ pub enum AltitudeRef {
     BelowEllipsoidalSurface = 1,
     AboveSeaLevel = 2,
     BelowSeaLevel = 3,
+}
+
+parse_str_enum! {
+    Status
+    (InProgress (b'A'))
+    (Interrupted (b'V'))
+}
+
+parse_str_enum! {
+    MeasureMode
+    (TwoDimensional (b'2'))
+    (ThreeDimensional (b'3'))
+}
+
+parse_enum! {
+    Differential u16
+    (NoCorrection 0)
+    (CorrectionApplied 1)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

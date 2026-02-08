@@ -4,7 +4,7 @@ pub struct InvalidExif;
 
 impl core::fmt::Display for InvalidExif {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        core::fmt::Debug::fmt(self, f)
+        f.write_str("Invalid Exif data")
     }
 }
 
