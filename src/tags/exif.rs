@@ -5,7 +5,6 @@ use crate::ParseOptions;
 use crate::SignedRational;
 use crate::UnsignedRational;
 use crate::Value;
-use crate::apple;
 use crate::define_tag_enum;
 use crate::define_value_enums;
 use crate::interop;
@@ -322,7 +321,7 @@ pub enum MakerNote<'a> {
     /// Apple-specific metadata.
     #[cfg(feature = "apple")]
     #[cfg_attr(docsrs, doc(cfg(feature = "apple")))]
-    Apple(apple::EntryMap<'a>),
+    Apple(crate::apple::EntryMap<'a>),
     /// Unknown metadata.
     Other(&'a [u8]),
 }
@@ -384,6 +383,8 @@ impl<'a> crate::RawEntry<'a> {
     fn parse_maker_note(&self, options: ParseOptions) -> Result<MakerNote<'a>, InvalidExif> {
         let bytes = self.get_bytes().ok_or(InvalidExif)?;
         match bytes {
+            #[cfg(feature = "apple")]
+            #[rustfmt::ignore]
             [
                 b'A',
                 b'p',
@@ -399,7 +400,7 @@ impl<'a> crate::RawEntry<'a> {
                 1,
                 ..,
             ] => {
-                let iter = apple::Iter::parse(bytes)?;
+                let iter = crate::apple::Iter::parse(bytes)?;
                 let entries = iter.into_entry_map(options)?;
                 Ok(MakerNote::Apple(entries))
             }
