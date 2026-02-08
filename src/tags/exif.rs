@@ -76,7 +76,7 @@ define_tag_enum! {
     ("Valid image width" PixelXDimension 40962 (u32) parse_u32)
     ("Valid image height" PixelYDimension 40963 (u32) parse_u32)
     ("Related audio file" RelatedSoundFile 40964 (&'a str) parse_str)
-    ("Interoperability entries" InteroperabilityIfdPointer 40965 (interop::EntryMap<'a>) parse_interop 1)
+    ("Interoperability entries" Interoperability 40965 (interop::EntryMap<'a>) parse_interop 1)
     ("Flash energy" FlashEnergy 41483 (UnsignedRational) parse_unsigned_rational)
     ("Spatial frequency response" SpatialFrequencyResponse 41484 (&'a [u8]) parse_bytes)
     ("Focal plane X resolution" FocalPlaneXResolution 41486 (UnsignedRational) parse_unsigned_rational)

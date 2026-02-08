@@ -2,6 +2,15 @@
 name = "fastexif"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+homepage = "https://github.com/igankevich/fastexif"
+repository = "https://github.com/igankevich/fastexif"
+documentation = "https://docs.rs/fastexif"
+readme = "README.md"
+description = "Exif metadata reader."
+keywords = ["exif", "photo"]
+categories = ["encoding"]
+include = ["**/*.rs", "Cargo.toml", "README.md"]
 
 [features]
 default = ["std", "apple"]

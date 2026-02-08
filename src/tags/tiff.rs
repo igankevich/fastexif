@@ -20,9 +20,9 @@ define_tag_enum! {
     Entry "TIFF entry"
     EntryMap "TIFF entries"
     (Iter)
-    ("Image width" ImageWidth 256 (u32) parse_u32)
-    ("Image height" ImageLength 257 (u32) parse_u32)
-    ("Number of bits per component" BitsPerSample 258 ([u16; 3]) parse_u16_3)
+    ("Image width in pixels" ImageWidth 256 (u32) parse_u32)
+    ("Image height in pixels" ImageLength 257 (u32) parse_u32)
+    ("Number of bits per color component" BitsPerSample 258 ([u16; 3]) parse_u16_3)
     ("Compression scheme" Compression 259 (Compression) parse_compression)
     ("Pixel composition" PhotometricInterpretation 262 (PhotometricInterpretation) parse_photometric_interpretation)
     ("Description of Image" ImageDescription 270 (&'a str) parse_str)
