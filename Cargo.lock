@@ -18,6 +18,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bplist"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e472ebe2f80bd97b93d08bccaeb0ee0c64038e7d1de544404d3b2ebb82b0b30f"
+dependencies = [
+ "paste",
+ "serde",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -32,6 +42,7 @@ name = "fastexif"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "bplist",
  "chrono",
  "log",
  "paste",

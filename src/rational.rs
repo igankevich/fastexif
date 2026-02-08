@@ -1,9 +1,11 @@
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Unsigned rational number.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UnsignedRational(pub u32, pub u32);
 
 impl UnsignedRational {
-    pub fn as_f64(self) -> f64 {
+    /// Convert to [`f64`].
+    pub const fn as_f64(self) -> f64 {
         self.0 as f64 / self.1 as f64
     }
 }
@@ -24,12 +26,14 @@ impl core::fmt::Debug for UnsignedRational {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Signed rational number.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SignedRational(pub i32, pub i32);
 
 impl SignedRational {
-    pub fn as_f64(self) -> f64 {
+    /// Convert to [`f64`].
+    pub const fn as_f64(self) -> f64 {
         self.0 as f64 / self.1 as f64
     }
 }

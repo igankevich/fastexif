@@ -2,42 +2,42 @@ use crate::Endian;
 use crate::InvalidExif;
 use crate::ParseOptions;
 use crate::UnsignedRational;
-use crate::ValueRef;
+use crate::Value;
+use crate::define_tag_enum;
+use crate::define_value_enums;
 use crate::exif;
 use crate::gps;
-use crate::make_tag_enum_v2;
 use crate::to_date_time;
 
 use chrono::DateTime;
 use chrono::NaiveDateTime;
 use chrono::Utc;
 
-make_tag_enum_v2! {
-    Tag "TIFF tags"
+use alloc::vec::Vec;
+
+define_tag_enum! {
+    Tag "TIFF tag"
     Entry "TIFF entry"
     EntryMap "TIFF entries"
     (Iter)
-    ("Image width" ImageWidth 256 (u32) parse_u32)
-    ("Image height" ImageLength 257 (u32) parse_u32)
-    ("Number of bits per component" BitsPerSample 258 ([u16; 3]) parse_u16_3)
-    ("Compression scheme" Compression 259 (u16) parse_u16)
-    ("Pixel composition" PhotometricInterpretation 262 (u16) parse_u16)
+    ("Image width in pixels" ImageWidth 256 (u32) parse_u32)
+    ("Image height in pixels" ImageLength 257 (u32) parse_u32)
+    ("Number of bits per color component" BitsPerSample 258 ([u16; 3]) parse_u16_3)
+    ("Compression scheme" Compression 259 (Compression) parse_compression)
+    ("Pixel composition" PhotometricInterpretation 262 (PhotometricInterpretation) parse_photometric_interpretation)
     ("Description of Image" ImageDescription 270 (&'a str) parse_str)
     ("Manufacturer of image input equipment" Make 271 (&'a str) parse_str)
     ("Model of image input equipment" Model 272 (&'a str) parse_str)
-    // TODO
-    //("Offset of strip" StripOffsets 273 (Vec<u32>) parse_vec_u32)
-    ("Orientation of image" Orientation 274 (u16) parse_u16)
-    ("Number of components" SamplesPerPixel 277 (u16) parse_u16)
+    ("Offset of strip" StripOffsets 273 (Vec<u32>) parse_vec_u32)
+    ("Orientation of image" Orientation 274 (Orientation) parse_orientation)
+    ("Number of components per pixel" SamplesPerPixel 277 (u16) parse_u16)
     ("Number of rows per strip" RowsPerStrip 278 (u32) parse_u32)
-    // TODO
-    //("Bytes per compressed strip" StripByteCounts 279 (Vec<u32>) parse_vec_u32)
-    ("Image resolution in width direction" XResolution 282 (UnsignedRational) parse_unsigned_rational)
-    ("Image resolution in height direction" YResolution 283 (UnsignedRational) parse_unsigned_rational)
+    ("Bytes per compressed strip" StripByteCounts 279 (Vec<u32>) parse_vec_u32)
+    ("Number of pixels per resolution unit in width direction" XResolution 282 (UnsignedRational) parse_unsigned_rational)
+    ("Number of pixels per resolution unit in height direction" YResolution 283 (UnsignedRational) parse_unsigned_rational)
     ("Image data arrangement" PlanarConfiguration 284 (PlanarConfiguration) parse_planar_configuration)
     ("Unit of X and Y resolution" ResolutionUnit 296 (ResolutionUnit) parse_resolution_unit)
-    // TODO
-    //("Transfer function" TransferFunction 301 (Vec<u16>) parse_vec_u16)
+    ("Transfer function" TransferFunction 301 (Vec<u16>) parse_vec_u16)
     ("Software used" Software 305 (&'a str) parse_str)
     ("File change date and time" DateTime 306 (NaiveDateTime) parse_naive_date_time)
     ("Person who created the image" Artist 315 (&'a str) parse_str)
@@ -47,47 +47,72 @@ make_tag_enum_v2! {
     ("Offset to JPEG SOI" JpegInterchangeFormat 513 (u32) parse_u32)
     ("Bytes of JPEG data" JpegInterchangeFormatLength 514 (u32) parse_u32)
     ("Color space transformation matrix coefficients" YCbCrCoefficients 529 ([UnsignedRational; 3]) parse_unsigned_rational_3)
-    ("Subsampling ratio of Y to C" YCbCrSubSampling 530 ([u16; 2]) parse_u16_2)
-    ("Y and C positioning" YCbCrPositioning 531 (YCbCrPositioning) parse_y_cb_cr_positionting)
+    ("Subsampling ratio of Y to C" YCbCrSubSampling 530 (YCbCrSubSampling) parse_y_cb_cr_sub_sampling)
+    ("Y and C positioning" YCbCrPositioning 531 (YCbCrPositioning) parse_y_cb_cr_positioning)
     ("Pair of black and white reference values" ReferenceBlackWhite 532 (ReferenceBlackWhite) parse_reference_black_white)
     ("Copyright holder" Copyright 33432 (&'a str) parse_str)
     ("Exif entries" Exif 34665 (exif::EntryMap<'a>) parse_exif 1)
     ("GPS info entries" GpsInfo 34853 (gps::EntryMap<'a>) parse_gps 1)
 }
 
-#[derive(Debug, Clone)]
+define_value_enums! {
+    (PlanarConfiguration u16 "Pixel components' storage format."
+        (Chunky 1 "Chunky (interleaved) format.")
+        (Planar 2 "Planar format."))
+    (ResolutionUnit u16 "Image resolution unit."
+        (Inches 2 "Inches")
+        (Centimeters 3 "Centimeters"))
+    (YCbCrPositioning u16 "The position of chrominance components with respect to luminance component."
+        (Centered 1 "Centered")
+        (CoSited 2 "Co-sited"))
+    (Compression u16 "Compression scheme."
+        (Uncompressed 1 "No compression")
+        (Jpeg 6 "JPEG compression"))
+    (PhotometricInterpretation u16 "Pixels' color space."
+        (Rgb 2 "RGB color space.")
+        (YCbCr 6 "YCbCr color space."))
+    (Orientation u16 "Image orientation."
+        (Normal 1 "No rotation, no mirroring.")
+        (MirrorHorizontally 2 "Mirror horizontally.")
+        (MirrorBoth 3 "Mirror both horizontally and vertically.")
+        (MirrorVertically 4 "Mirror vertically.")
+        (MirrorMainDiagonal 5 "Mirror over main diagonal.")
+        (RotateClockwise 6 "Rotate by 90 degrees clockwise.")
+        (MirrorAntidiagonal 7 "Mirror over antidiagonal.")
+        (RotateCounterClockwise 8 "Rotate by 90 degrees counter-clockwise."))
+}
+
+/// Color chromaticity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Chromaticity {
+    /// Hue component.
     pub hue: UnsignedRational,
+    /// Saturation (intensity) component.
     pub saturation: UnsignedRational,
 }
 
+/// Reference black point and white point values.
+///
+/// Points are specified by three color components, RGB or YCbCr depending on
+/// [`PhotometricInterpretation`](Entry::PhotometricInterpretation).
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ReferenceBlackWhite {
+    /// Black point.
     pub black: [UnsignedRational; 3],
+    /// White point.
     pub white: [UnsignedRational; 3],
 }
 
+/// Chromaticity subsampling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum PlanarConfiguration {
-    Chunky,
-    Planar,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum ResolutionUnit {
-    Centimeters,
-    Inches,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum YCbCrPositioning {
-    Centered,
-    CoSited,
+pub enum YCbCrSubSampling {
+    /// Average Cr and Cb over 2 columns.
+    YCbCr422,
+    /// Average Cr and Cb over 2 rows and over 2 columns.
+    YCbCr420,
 }
 
 impl<'a> crate::RawEntry<'a> {
@@ -123,26 +148,10 @@ impl<'a> crate::RawEntry<'a> {
         })
     }
 
-    fn parse_planar_configuration(&self) -> Result<PlanarConfiguration, InvalidExif> {
-        match self.parse_u16()? {
-            1 => Ok(PlanarConfiguration::Chunky),
-            2 => Ok(PlanarConfiguration::Planar),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_resolution_unit(&self) -> Result<ResolutionUnit, InvalidExif> {
-        match self.parse_u16()? {
-            2 => Ok(ResolutionUnit::Inches),
-            3 => Ok(ResolutionUnit::Centimeters),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_y_cb_cr_positionting(&self) -> Result<YCbCrPositioning, InvalidExif> {
-        match self.parse_u16()? {
-            1 => Ok(YCbCrPositioning::Centered),
-            2 => Ok(YCbCrPositioning::CoSited),
+    fn parse_y_cb_cr_sub_sampling(&self) -> Result<YCbCrSubSampling, InvalidExif> {
+        match self.parse_u16_2()? {
+            [2, 1] => Ok(YCbCrSubSampling::YCbCr422),
+            [2, 2] => Ok(YCbCrSubSampling::YCbCr420),
             _ => Err(InvalidExif),
         }
     }
@@ -167,6 +176,7 @@ impl<'a> crate::RawEntry<'a> {
 }
 
 impl<'a> Iter<'a> {
+    /// Create iterator from the provided byte slice.
     pub fn parse(data: &'a [u8]) -> Result<Self, InvalidExif> {
         let data = match data.split_at_checked(10) {
             Some(([_, _, _, _, b'E', b'x', b'i', b'f', 0, 0], rest)) => rest,

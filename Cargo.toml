@@ -2,15 +2,37 @@
 name = "fastexif"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+homepage = "https://github.com/igankevich/fastexif"
+repository = "https://github.com/igankevich/fastexif"
+documentation = "https://docs.rs/fastexif"
+readme = "README.md"
+description = "Exif metadata reader."
+keywords = ["exif", "photo"]
+categories = ["encoding"]
+include = ["**/*.rs", "Cargo.toml", "README.md"]
 
 [features]
-default = ["std"]
+default = ["std", "apple"]
 std = ["serde/std", "chrono/std", "log/std"]
 serde = ["dep:serde", "chrono/serde", "bitflags/serde"]
+apple = ["serde"]
 
 [dependencies]
 bitflags = { version = "2.10.0" }
+bplist = "0.1.0"
 chrono = { version = "0.4.42", features = [], default-features = false }
 log = { version = "0.4.29", features = [], default-features = false }
 paste = "1.0.15"
 serde = { version = "1.0.228", features = ["derive"], default-features = false, optional = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+panic = "deny"
+
+[lints.rust]
+missing_docs = "warn"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

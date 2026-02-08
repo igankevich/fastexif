@@ -1,30 +1,32 @@
 use crate::InvalidExif;
 use crate::UnsignedRational;
-use crate::ValueRef;
-use crate::make_tag_enum_v2;
+use crate::Value;
+use crate::define_tag_enum;
+use crate::define_value_enums;
+use crate::define_value_str_enums;
 
 use chrono::DateTime;
 use chrono::NaiveDate;
 use chrono::NaiveTime;
 use chrono::Utc;
 
-make_tag_enum_v2! {
-    Tag "GPS tags"
+define_tag_enum! {
+    Tag "GPS tag"
     Entry "GPS entry"
     EntryMap "GPS entries"
     (Iter)
     ("GPS tag version" VersionId 0 (&'a str) parse_str)
-    ("North or South Latitude" LatitudeRef 1 (LatitudeRef) parse_latitude_ref)
-    ("Latitude" Latitude 2 (GpsDegrees) parse_latitude_longitude)
-    ("East or West Longitude" LongitudeRef 3 (LongitudeRef) parse_longitude_ref)
-    ("Longitude" Longitude 4 (GpsDegrees) parse_latitude_longitude)
+    ("North or south latitude" LatitudeRef 1 (LatitudeRef) parse_latitude_ref)
+    ("Latitude" Latitude 2 (Degrees) parse_latitude_longitude)
+    ("East or west longitude" LongitudeRef 3 (LongitudeRef) parse_longitude_ref)
+    ("Longitude" Longitude 4 (Degrees) parse_latitude_longitude)
     ("Altitude reference" AltitudeRef 5 (AltitudeRef) parse_altitude_ref)
-    ("Altitude" Altitude 6 (UnsignedRational) parse_altitude)
+    ("Altitude in meters" Altitude 6 (UnsignedRational) parse_altitude)
     ("GPS time (atomic clock)" TimeStamp 7 (NaiveTime) parse_time_stamp)
     ("GPS satellites used for measurement" Satellites 8 (&'a str) parse_str)
-    ("GPS receiver status" Status 9 (&'a str) parse_str)
-    ("GPS measurement mode" MeasureMode 10 (&'a str) parse_str)
-    ("Measurement precision" Dop 11 (UnsignedRational) parse_unsigned_rational)
+    ("GPS receiver status" Status 9 (Status) parse_status)
+    ("GPS measurement mode" MeasureMode 10 (MeasureMode) parse_measure_mode)
+    ("Measurement precision (data degree of precision)" Dop 11 (UnsignedRational) parse_unsigned_rational)
     ("Speed unit" SpeedRef 12 (SpeedRef) parse_speed_ref)
     ("Speed of GPS receiver" Speed 13 (UnsignedRational) parse_unsigned_rational)
     ("Reference for direction of movement" TrackRef 14 (Direction) parse_direction)
@@ -43,17 +45,56 @@ make_tag_enum_v2! {
     ("Name of GPS processing method" ProcessingMethod 27 (&'a [u8]) parse_bytes)
     ("Name of GPS area" AreaInformation 28 (&'a [u8]) parse_bytes)
     ("GPS date" DateStamp 29 (NaiveDate) parse_date_stamp)
-    ("GPS differential correction" Differential 30 (u16) parse_u16)
-    ("Horizontal positioning error" HPositioningError 31 (UnsignedRational) parse_unsigned_rational)
+    ("GPS differential correction" Differential 30 (Differential) parse_differential)
+    ("Horizontal positioning error in meters" HPositioningError 31 (UnsignedRational) parse_unsigned_rational)
+}
+
+define_value_enums! {
+    (AltitudeRef u8 "Reference altitude."
+        (AboveEllipsoidalSurface 0 "Positive ellipsoidal height (at or above ellipsoidal surface)")
+        (BelowEllipsoidalSurface 1 "Negative ellipsoidal height (below ellipsoidal surface)")
+        (AboveSeaLevel 2 "Positive sea level value (at or above sea level reference)")
+        (BelowSeaLevel 3 "Negative sea level value (below sea level reference)"))
+    (Differential u16 "Differential correction"
+        (NoCorrection 0 "Measurement without differential correction")
+        (CorrectionApplied 1 "Differential correction applied"))
+}
+
+define_value_str_enums! {
+    (LatitudeRef "Reference latitude."
+        (North (b'N') "North")
+        (South (b'S') "South"))
+    (LongitudeRef "Reference longitude."
+        (East (b'E') "East")
+        (West (b'W') "West"))
+    (Status "GPS receiver status."
+        (InProgress (b'A') "Measurement in progress")
+        (Interrupted (b'V') "Measurement interrupted"))
+    (MeasureMode "Measurement mode."
+        (TwoDimensional (b'2') "2-dimensional measurement")
+        (ThreeDimensional (b'3') "3-dimensional measurement"))
+    (SpeedRef "Speed unit."
+        (KilometersPerHour (b'K') "Kilometers per hour")
+        (MilesPerHour (b'M') "Miles per hour")
+        (KnotsPerHour (b'N') "Knots"))
+    (Direction "Direction"
+        (True (b'T') "True direction")
+        (Magnetic (b'M') "Magnetic direction"))
+    (DistanceRef "Distance unit."
+        (Kilometers (b'K') "Kilometers")
+        (Miles (b'M') "Miles")
+        (NauticalMiles (b'N') "Nautical miles"))
 }
 
 impl EntryMap<'_> {
+    /// Returns atomic time obtained by GPS receiver.
     pub fn time(&self) -> Option<DateTime<Utc>> {
         let date = self.get_date_stamp()?;
         let time = self.get_time_stamp()?;
         Some(date.and_time(*time).and_utc())
     }
 
+    /// Returns longitude in degrees.
     pub fn latitude(&self) -> Option<f64> {
         let latitude = self.get_latitude()?;
         let latitude_ref = self.get_latitude_ref()?;
@@ -63,6 +104,7 @@ impl EntryMap<'_> {
         }
     }
 
+    /// Returns longitude in degrees.
     pub fn longitude(&self) -> Option<f64> {
         let longitude = self.get_longitude()?;
         let longitude_ref = self.get_longitude_ref()?;
@@ -72,6 +114,7 @@ impl EntryMap<'_> {
         }
     }
 
+    /// Returns altitude in meters.
     pub fn altitude(&self) -> Option<f64> {
         use AltitudeRef::*;
         let altitude = self.get_altitude()?;
@@ -122,74 +165,33 @@ impl EntryMap<'_> {
     }
 }
 
-#[derive(Debug, Clone)]
+/// GPS location component specified as degrees.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub struct GpsDegrees(UnsignedRational, UnsignedRational, UnsignedRational);
+pub struct Degrees(UnsignedRational, UnsignedRational, UnsignedRational);
 
-impl GpsDegrees {
+impl Degrees {
+    /// Returns degrees.
     pub const fn degrees(&self) -> &UnsignedRational {
         &self.0
     }
 
+    /// Returns minutes.
     pub const fn minutes(&self) -> &UnsignedRational {
         &self.1
     }
 
+    /// Returns seconds.
     pub const fn seconds(&self) -> &UnsignedRational {
         &self.2
     }
 
+    /// Returns fractional degress.
     pub fn as_f64(&self) -> f64 {
         self.degrees().as_f64()
             + self.minutes().as_f64() * (1.0 / 60.0)
             + self.seconds().as_f64() * (1.0 / 3600.0)
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum LatitudeRef {
-    North,
-    South,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum LongitudeRef {
-    East,
-    West,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum AltitudeRef {
-    AboveEllipsoidalSurface = 0,
-    BelowEllipsoidalSurface = 1,
-    AboveSeaLevel = 2,
-    BelowSeaLevel = 3,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum SpeedRef {
-    KilometersPerHour,
-    MilesPerHour,
-    KnotsPerHour,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum Direction {
-    True,
-    Magnetic,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum DistanceRef {
-    Kilometers,
-    Miles,
-    Knots,
 }
 
 impl<'a> crate::RawEntry<'a> {
@@ -245,76 +247,16 @@ impl<'a> crate::RawEntry<'a> {
         NaiveTime::from_num_seconds_from_midnight_opt(s, n).ok_or(InvalidExif)
     }
 
-    fn parse_latitude_longitude(&self) -> Result<GpsDegrees, InvalidExif> {
+    fn parse_latitude_longitude(&self) -> Result<Degrees, InvalidExif> {
         let [degrees, minutes, seconds] = self.parse_unsigned_rational_3()?;
-        Ok(GpsDegrees(degrees, minutes, seconds))
+        Ok(Degrees(degrees, minutes, seconds))
     }
 
     fn parse_altitude(&self) -> Result<UnsignedRational, InvalidExif> {
-        let ValueRef::UnsignedRational(altitude) = self.parse_value()? else {
+        let Value::UnsignedRational(altitude) = self.parse_value()? else {
             return Err(InvalidExif);
         };
         Ok(altitude)
-    }
-
-    fn parse_latitude_ref(&self) -> Result<LatitudeRef, InvalidExif> {
-        let bytes = self.get_bytes().ok_or(InvalidExif)?;
-        match bytes {
-            [b'N', 0, ..] => Ok(LatitudeRef::North),
-            [b'S', 0, ..] => Ok(LatitudeRef::South),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_longitude_ref(&self) -> Result<LongitudeRef, InvalidExif> {
-        let bytes = self.get_bytes().ok_or(InvalidExif)?;
-        match bytes {
-            [b'E', 0, ..] => Ok(LongitudeRef::East),
-            [b'W', 0, ..] => Ok(LongitudeRef::West),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_altitude_ref(&self) -> Result<AltitudeRef, InvalidExif> {
-        let ValueRef::U8(byte) = self.parse_value()? else {
-            return Err(InvalidExif);
-        };
-        match byte {
-            0 => Ok(AltitudeRef::AboveEllipsoidalSurface),
-            1 => Ok(AltitudeRef::BelowEllipsoidalSurface),
-            2 => Ok(AltitudeRef::AboveSeaLevel),
-            3 => Ok(AltitudeRef::BelowSeaLevel),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_speed_ref(&self) -> Result<SpeedRef, InvalidExif> {
-        let bytes = self.get_bytes().ok_or(InvalidExif)?;
-        match bytes {
-            [b'K', 0, ..] => Ok(SpeedRef::KilometersPerHour),
-            [b'M', 0, ..] => Ok(SpeedRef::MilesPerHour),
-            [b'N', 0, ..] => Ok(SpeedRef::KnotsPerHour),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_distance_ref(&self) -> Result<DistanceRef, InvalidExif> {
-        let bytes = self.get_bytes().ok_or(InvalidExif)?;
-        match bytes {
-            [b'K', 0, ..] => Ok(DistanceRef::Kilometers),
-            [b'M', 0, ..] => Ok(DistanceRef::Miles),
-            [b'N', 0, ..] => Ok(DistanceRef::Knots),
-            _ => Err(InvalidExif),
-        }
-    }
-
-    fn parse_direction(&self) -> Result<Direction, InvalidExif> {
-        let bytes = self.get_bytes().ok_or(InvalidExif)?;
-        match bytes {
-            [b'T', 0, ..] => Ok(Direction::True),
-            [b'M', 0, ..] => Ok(Direction::Magnetic),
-            _ => Err(InvalidExif),
-        }
     }
 
     fn parse_date_stamp(&self) -> Result<NaiveDate, InvalidExif> {
